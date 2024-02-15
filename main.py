@@ -1,56 +1,16 @@
-from fastapi import FastAPI, HTTPException, Depends
-from fastapi.responses import JSONResponse
-from fastapi.encoders import jsonable_encoder
-from motor.motor_asyncio import AsyncIOMotorClient
-from pydantic import BaseModel, Field
-from bson import ObjectId
-
-app = FastAPI()
-
 # Функція для отримання підключення до бд
-def get_database() -> AsyncIOMotorClient:
+async def get_database() -> AsyncIOMotorClient:
     return AsyncIOMotorClient("mongodb://localhost:27017")["mini_blog"]
 
 # Залежність для отримання підключення до бд
 async def get_db() -> AsyncIOMotorClient:
     # Отримую коннект до бд
-    db = get_database()
+    db = await get_database()
     try:
         yield db
     finally:
         # Закриваю коннект після траю
         db.client.close()
-
-# Базова модель
-class Base(BaseModel):
-    class Config:
-        # Вказую FastAPI юзати orm_mode для автоматичного перетворення моделей
-        orm_mode = True
-
-# Модель для категорії
-class CategoryCreate(Base):
-    name: str
-
-class Category(CategoryCreate):
-    id: str
-
-# Модель для автора
-class AuthorCreate(Base):
-    name: str
-
-class Author(AuthorCreate):
-    id: str
-
-# Модель для статті
-class ArticleCreate(Base):
-    title: str
-    text: str
-    category_id: ObjectId
-    author_id: ObjectId
-    tags: list[str] = Field(default_factory=list)
-
-class Article(ArticleCreate):
-    id: str
 
 # Маршрути
 @app.post("/categories/", response_model=Category)
@@ -69,7 +29,8 @@ async def create_author(author: AuthorCreate, db: AsyncIOMotorClient = Depends(g
 
 @app.post("/articles/", response_model=Article)
 async def create_article(article: ArticleCreate, db: AsyncIOMotorClient = Depends(get_db)):
-    category, author = await db.categories.find_one({"_id": article.category_id}), await db.authors.find_one({"_id": article.author_id})
+    category = await db.categories.find_one({"_id": article.category_id})
+    author = await db.authors.find_one({"_id": article.author_id})
     if not category or not author:
         raise HTTPException(status_code=404, detail="Категорія або Автор не знайдені")
     article_dict = jsonable_encoder(article)
@@ -86,7 +47,8 @@ async def read_article(article_id: str, db: AsyncIOMotorClient = Depends(get_db)
 
 @app.put("/articles/{article_id}", response_model=Article)
 async def update_article(article_id: str, article: ArticleCreate, db: AsyncIOMotorClient = Depends(get_db)):
-    category, author = await db.categories.find_one({"_id": article.category_id}), await db.authors.find_one({"_id": article.author_id})
+    category = await db.categories.find_one({"_id": article.category_id})
+    author = await db.authors.find_one({"_id": article.author_id})
     if not category or not author:
         raise HTTPException(status_code=404, detail="Категорія або Автор не знайдені")
     article_dict = jsonable_encoder(article)
